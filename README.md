@@ -1,6 +1,10 @@
 # Coding-with-Gen-AI
 
 ## Problem
-The problem that I want AI to help solve is student activity levels. A program that consists of a step counter that counts the 
-number of steps a student takes in a day, plus minigames and other features that help students stay motivated.
-These features include: daily streaks, leaderboard, point earning, and competition with friends.
+The problem I want to address is students' lack of physical activity. With busy schedules, schoolwork, and time spent on their phones or computers, students may sometimes feel unmotivated to go outside and get enough exercise. My idea is to develop an interactive step-counter program that encourages students to be more active by turning walking into a fun, rewarding experience. The app would track students' daily steps and include features such as daily streaks, mini-games, leaderboards, point systems, and friendly competitions with friends to keep them motivated. As students reach their step goals and participate in challenges, they can earn points that can be redeemed for rewards such as vouchers, gift cards, or student discounts at participating stores and restaurants. Beyond promoting a healthier lifestyle, the app could also serve as a money-saving tool by letting students use their earned rewards to save on everyday purchases. This way, students have an extra incentive to stay active while enjoying benefits that make student life a little more affordable.
+
+## Reflection
+During the process, I learned that AI can help you write code you are unfamiliar with quickly and easily. Using generative AI was simple: I only needed to provide a prompt, and it instantly generated code for me. I realized that you can learn a lot by using AI. However, one drawback was that the code it generated was too long and hard for me to read and understand. I had to ask it to shorten the code, but unfortunately I ran out of free messages, and Claude timed out, so I couldn't get a detailed explanation of what it changed or added. AI can also become a shortcut for students unwilling to put in the effort to learn, since they can simply enter a prompt and receive a final product. This may discourage students from learning and understanding the subject on their own. Overall, AI has both advantages and disadvantages, and we must use it carefully and mindfully.
+
+## Link for Conversation with Claude
+https://claude.ai/share/0e611bb6-e651-4f77-84b5-f9bd9a50ff8c 
