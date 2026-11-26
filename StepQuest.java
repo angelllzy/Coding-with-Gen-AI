@@ -20,6 +20,7 @@ import java.util.function.Supplier;
  * Walking earns energy -> energy plays minigames -> coins buy discount vouchers.
  *
  * Motivation features:
+ *  - Situation-aware motivational quotes (start, goal reached, streak at risk, podium, ...)
  *  - Daily goal streaks (+25% coins per day, max x2) that RESET if you miss a day
  *  - SHARED weekly leaderboard: every student's steps go into one file, and the
  *    top 3 at the end of the week win bonus coins (500 / 300 / 150)
@@ -487,6 +488,15 @@ public class StepQuest {
             return rows;
         }
 
+        /** Returns {rank, totalStudents} for this week, or {0, total} if the student isn't on the board. */
+        int[] position(Player me, LocalDate today) {
+            List<Entry> rows = standings(Player.weekKey(today));
+            for (int i = 0; i < rows.size(); i++) {
+                if (rows.get(i).name.equals(me.getName())) return new int[] {i + 1, rows.size()};
+            }
+            return new int[] {0, rows.size()};
+        }
+
         /** One-line summary of where the student stands this week. */
         String statusLine(Player me, LocalDate today) {
             List<Entry> rows = standings(Player.weekKey(today));
@@ -526,26 +536,27 @@ public class StepQuest {
                     timeLeft, MIN_STEPS_FOR_PRIZE, MIN_ENTRANTS);
         }
 
-        /** Pays out a finished week's podium prize to this student, if they earned one. */
-        void settleWeek(Player p, String weekKey) {
+        /** Pays out a finished week's podium prize to this student; returns the coins awarded (0 if none). */
+        int settleWeek(Player p, String weekKey) {
             List<Entry> rows = standings(weekKey);
-            if (rows.size() < MIN_ENTRANTS) return;
+            if (rows.size() < MIN_ENTRANTS) return 0;
             for (int i = 0; i < rows.size(); i++) {
                 Entry e = rows.get(i);
                 if (!e.name.equals(p.getName())) continue;
                 int rank = i + 1;
                 System.out.println("\n*** Last week's final standings: you finished #" + rank
                         + " of " + rows.size() + " ***");
-                if (rank > PRIZES.length) return;
+                if (rank > PRIZES.length) return 0;
                 if (e.steps < MIN_STEPS_FOR_PRIZE) {
                     System.out.printf("You needed %,d steps to win a prize but had %,d. Next week!%n",
                             MIN_STEPS_FOR_PRIZE, e.steps);
-                    return;
+                    return 0;
                 }
                 p.awardCoins(PRIZES[rank - 1]);
                 System.out.println("Podium prize: +" + PRIZES[rank - 1] + " coins!");
-                return;
+                return PRIZES[rank - 1];
             }
+            return 0;
         }
     }
 
@@ -698,6 +709,77 @@ public class StepQuest {
         }
     }
 
+    // ======================= Motivation quotes =======================
+    /** The situations a quote can respond to. */
+    enum Mood { START, KEEP_GOING, GOAL_REACHED, STREAK_AT_RISK, STREAK_BROKEN, PODIUM, LEADING, CHASING }
+
+    /** Source of motivation. Could later be swapped for quotes from a file or a website. */
+    interface QuoteProvider {
+        String quoteFor(Mood mood, String studentName);
+    }
+
+    /** Built-in bank of original quotes, grouped by situation. Never repeats the same one twice in a row. */
+    static class QuoteBank implements QuoteProvider {
+        private final Map<Mood, List<String>> quotes = new EnumMap<>(Mood.class);
+        private final Random rng = new Random();
+        private String last = "";
+
+        QuoteBank() {
+            add(Mood.START,
+                    "Let's go, {name}! Every big streak starts with one small step.",
+                    "Your shoes are ready. All they need now is you.",
+                    "Ten minutes outside beats an hour of thinking about it.",
+                    "The hardest part is the front door. Get past it and the rest is easy.",
+                    "You don't have to run, {name}. You just have to move.");
+            add(Mood.KEEP_GOING,
+                    "Slow steps still beat the couch.",
+                    "Small steps add up faster than you think.",
+                    "Your future self is cheering for every step you take now.",
+                    "One more block, {name}. You've got more in you than you think.",
+                    "Fresh air clears your head and your calendar looks better afterwards.");
+            add(Mood.GOAL_REACHED,
+                    "Goal crushed, {name}! Your legs and your streak thank you.",
+                    "You showed up and walked it out. That's how habits are built.",
+                    "Done for today, and tomorrow's you is already proud.",
+                    "Another day, another goal. Consistency is your superpower.");
+            add(Mood.STREAK_AT_RISK,
+                    "Your streak is counting on you. A short walk will keep it alive.",
+                    "Don't break the chain, {name}. A lap around campus is enough.",
+                    "Streaks are built on the days you don't feel like it.",
+                    "Grab a friend and take the long way to class. Your streak will thank you.");
+            add(Mood.STREAK_BROKEN,
+                    "A missed day isn't the end, {name}. It's a restart. Begin again today.",
+                    "Streaks reset, but your habit doesn't have to. Take the first step back.",
+                    "Everyone stumbles. What counts is the next step.");
+            add(Mood.PODIUM,
+                    "Podium finish! Your steps paid off, {name}.",
+                    "You out-walked the competition. Now go spend those coins!",
+                    "Reaching the top takes consistency, and you've clearly got plenty.");
+            add(Mood.LEADING,
+                    "You're leading the pack, {name}. Keep the pace and stay on top!",
+                    "Rivals are catching up, so keep stepping.",
+                    "First place is fun to hold. Defend it with a walk today.");
+            add(Mood.CHASING,
+                    "The leader isn't out of reach. A few extra walks could change the ranking.",
+                    "Every step closes the gap, {name}. Go get that spot.",
+                    "Behind today, ahead tomorrow. Lace up and chase it.");
+        }
+
+        private void add(Mood mood, String... texts) {
+            quotes.put(mood, List.of(texts));
+        }
+
+        public String quoteFor(Mood mood, String studentName) {
+            List<String> options = quotes.get(mood);
+            String pick = options.get(rng.nextInt(options.size()));
+            for (int tries = 0; pick.equals(last) && options.size() > 1 && tries < 10; tries++) {
+                pick = options.get(rng.nextInt(options.size()));
+            }
+            last = pick;
+            return pick.replace("{name}", studentName);
+        }
+    }
+
     // ======================= Menu helpers =======================
     static int parse(String s) {
         try { return Integer.parseInt(s.trim()); }
@@ -705,15 +787,36 @@ public class StepQuest {
     }
 
     /** Brings the player up to date with today, settling last week's prize if a week just ended. */
-    static void applySync(Player p, StepCounter c, LocalDate today, Leaderboard board) {
+    static void applySync(Player p, StepCounter c, LocalDate today, Leaderboard board, QuoteProvider quotes) {
         Player.SyncResult result = p.syncDate(today, c);
         if (result.streakBroken) {
             System.out.println("You missed a daily goal, so your streak was reset. Start a new one today!");
+            printQuote(quotes, Mood.STREAK_BROKEN, p);
         }
-        if (result.finishedWeek != null) {
-            board.settleWeek(p, result.finishedWeek);
+        if (result.finishedWeek != null && board.settleWeek(p, result.finishedWeek) > 0) {
+            printQuote(quotes, Mood.PODIUM, p);
         }
         board.report(p, today);
+    }
+
+    static void printQuote(QuoteProvider quotes, Mood mood, Player p) {
+        System.out.println("  >> " + quotes.quoteFor(mood, p.getName()));
+    }
+
+    /** Picks a quote that fits the student's situation right now. */
+    static void motivate(QuoteProvider quotes, Player p, StepCounter c, Leaderboard board, LocalDate today) {
+        List<Mood> fits = new ArrayList<>();
+        if (c.isGoalRewarded()) fits.add(Mood.GOAL_REACHED);
+        else if (p.isStreakAtRisk(c)) fits.add(Mood.STREAK_AT_RISK);
+        else if (c.getStepsToday() == 0) fits.add(Mood.START);
+        else fits.add(Mood.KEEP_GOING);
+
+        int[] pos = board.position(p, today);
+        if (pos[1] > 1 && pos[0] == 1) fits.add(Mood.LEADING);
+        else if (pos[1] > 1 && pos[0] > 1) fits.add(Mood.CHASING);
+
+        Mood chosen = fits.get(new Random().nextInt(fits.size()));
+        printQuote(quotes, chosen, p);
     }
 
     static void showStats(Player p, StepCounter c, LocalDate today, Leaderboard board) {
@@ -731,7 +834,8 @@ public class StepQuest {
         if (!status.isEmpty()) System.out.println(status);
     }
 
-    static void logSteps(int steps, Player p, StepCounter c, LocalDate today, Leaderboard board) {
+    static void logSteps(int steps, Player p, StepCounter c, LocalDate today, Leaderboard board,
+                         QuoteProvider quotes) {
         if (steps <= 0) { System.out.println("No steps logged."); return; }
         int accepted = c.add(steps);
         if (accepted < steps) {
@@ -745,6 +849,7 @@ public class StepQuest {
             p.recordGoalReached(today);
             System.out.printf("Daily goal reached! Streak is now %d (coin multiplier x%.2f).%n",
                     p.getStreak(), p.getMultiplierExact());
+            printQuote(quotes, Mood.GOAL_REACHED, p);
         }
         board.report(p, today);
         String status = board.statusLine(p, today);
@@ -801,7 +906,7 @@ public class StepQuest {
     static void printMenu() {
         System.out.println("\n1) Log steps   2) Simulate a walk   3) Play minigame   4) Stats");
         System.out.println("5) Checkpoints 6) Reward shop       7) My vouchers    8) Leaderboard");
-        System.out.println("9) Skip ahead N days (demo)         0) Save & quit");
+        System.out.println("9) Skip ahead N days (demo)  m) Motivate me   0) Save & quit");
         System.out.print("> ");
     }
 
@@ -811,6 +916,7 @@ public class StepQuest {
         GameClock clock = new GameClock();
         StepCounter counter = new StepCounter(5000);
         Leaderboard board = new Leaderboard("stepquest_leaderboard.properties");
+        QuoteProvider quotes = new QuoteBank();
 
         System.out.print("Your name (must be unique among students): ");
         String typed = in.nextLine().trim();
@@ -827,7 +933,8 @@ public class StepQuest {
         } else {
             System.out.println("Welcome back, " + player.getName() + "!");
         }
-        applySync(player, counter, clock.today(), board);
+        applySync(player, counter, clock.today(), board, quotes);
+        motivate(quotes, player, counter, board, clock.today());
         saves.save(player, counter);
 
         RewardShop shop = new RewardShop();
@@ -840,11 +947,11 @@ public class StepQuest {
         while (running) {
             printMenu();
             switch (in.nextLine().trim()) {
-                case "1" -> logSteps(manual.readSteps(), player, counter, clock.today(), board);
+                case "1" -> logSteps(manual.readSteps(), player, counter, clock.today(), board, quotes);
                 case "2" -> {
                     int steps = random.readSteps();
                     System.out.println("You wandered around and walked " + steps + " steps.");
-                    logSteps(steps, player, counter, clock.today(), board);
+                    logSteps(steps, player, counter, clock.today(), board, quotes);
                 }
                 case "3" -> playMenu(games, player, in);
                 case "4" -> showStats(player, counter, clock.today(), board);
@@ -860,9 +967,10 @@ public class StepQuest {
                     } else {
                         clock.advanceDays(days);
                         System.out.println("Skipped ahead to " + clock.today() + ".");
-                        applySync(player, counter, clock.today(), board);
+                        applySync(player, counter, clock.today(), board, quotes);
                     }
                 }
+                case "m", "M" -> motivate(quotes, player, counter, board, clock.today());
                 case "0" -> running = false;
                 default -> System.out.println("Pick 0-9.");
             }
